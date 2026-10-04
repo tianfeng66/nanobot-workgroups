@@ -152,6 +152,12 @@ class WorkgroupService:
         with self.connect() as db:
             return [cast(TaskRecord, dict(row)) for row in db.execute("SELECT * FROM tasks WHERE group_id=? ORDER BY created DESC LIMIT 100", (group_id,))]
 
+    def recent_completed(self, group_id: str) -> list[TaskRecord]:
+        self.group(group_id)
+        with self.connect() as db:
+            return [cast(TaskRecord, dict(row)) for row in db.execute(
+                "SELECT * FROM tasks WHERE group_id=? AND status='completed' ORDER BY finished DESC LIMIT 3", (group_id,))]
+
     def cancel(self, task_id: str) -> TaskRecord:
         self.task(task_id)
         with self.connect() as db:

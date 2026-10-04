@@ -28,11 +28,11 @@ def main():
     else:
         config = load_config(config_path)
         native_codex = project / "bin" / "codex.exe"
-        if config.tools.workgroups.codex_command == "codex" and native_codex.exists():
+        if native_codex.exists() and (config.tools.workgroups.codex_command == "codex" or not shutil.which(config.tools.workgroups.codex_command)):
             config.tools.workgroups.codex_command = str(native_codex)
             save_config(config, config_path)
         native_opencode = project / "bin" / "opencode.exe"
-        if config.tools.workgroups.opencode_command == "opencode" and native_opencode.exists():
+        if native_opencode.exists() and (config.tools.workgroups.opencode_command == "opencode" or not shutil.which(config.tools.workgroups.opencode_command)):
             config.tools.workgroups.opencode_command = str(native_opencode)
             save_config(config, config_path)
     for name in ("workspace", "logs", "tmp", "cache"):

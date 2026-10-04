@@ -29,6 +29,7 @@ OpenCode 登录后在 `personal-data/workgroups/runtime/xdg-config/opencode/open
 - 前序任务依赖：Codex 实现后由 OpenCode 检查，前序成功才继续。
 - 持久队列；重启保留排队任务，执行中断的任务不会自动重放。
 - 主要运行数据跟随安装目录。放在 D 盘即可保存在 D 盘，没有 D 盘也能使用。
+- 切换群组保留当前页面中的任务和记忆草稿；失败任务支持编辑后重新提交。
 
 任务顺序执行。本版本是本地项目工作群组，尚未接入飞书或 Telegram 群消息。
 
@@ -49,6 +50,12 @@ OpenCode 登录后在 `personal-data/workgroups/runtime/xdg-config/opencode/open
 - 访问已有项目：在 `personal-data/config.json` 的 `tools.workgroups.allowedWorkspaceRoots` 加入根目录，再重启。
 
 配置与故障排查：[使用说明](README-PERSONAL.md)。上游说明：[README-UPSTREAM.md](README-UPSTREAM.md)。
+
+## 更新已有安装
+
+先等待任务结束，关闭网页服务，并重启电脑以退出独立运行的后台队列进程。下载新版本并解压，用新源码覆盖原安装目录，保留 `personal-data`、`bin`、`.python`、`.venv` 和 `.uv-cache`，然后重新运行 `install.cmd`。安装器会保留现有配置和登录资料。重新启动后继续处理排队任务。
+
+变更记录：[CHANGELOG.md](CHANGELOG.md)。
 
 ## 开发验证
 

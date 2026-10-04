@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import time
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -41,7 +42,7 @@ def stop_process(process: subprocess.Popen, job: WindowsJob | None = None) -> No
 
 def build_prompt(service: WorkgroupService, task: TaskRecord) -> str:
     group = service.group(str(task["group_id"]))
-    recent = [item for item in reversed(service.tasks(str(task["group_id"]))) if item["status"] == "completed"][-3:]
+    recent = reversed(service.recent_completed(str(task["group_id"])))
     context = "\n\n".join(f"{item['backend']}: {str(item['result'])[-2000:]}" for item in recent)
     predecessor = service.task(str(task["dependency"])) if task["dependency"] else None
     return (
@@ -92,6 +93,27 @@ def extract_result(backend: str, directory: Path) -> str:
     return "\n\n".join(texts).strip()
 
 
+def extract_error(backend: str, directory: Path) -> str:
+    """Native CLIs report terminal failures in JSON stdout, not just stderr."""
+    message = ""
+    failure_type = "error" if backend == "opencode" else "turn.failed"
+    for line in tail(directory / "events.jsonl").splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != failure_type:
+            continue
+        error = event.get("error")
+        if isinstance(error, dict):
+            data = error.get("data")
+            detail = data.get("message") if isinstance(data, dict) else None
+            message = str(detail or error.get("message") or error.get("name") or "")
+        elif isinstance(error, str):
+            message = error
+    return message
+
+
 def execute(service: WorkgroupService, task: TaskRecord) -> None:
     task_id = str(task["id"])
     directory = service.root / "tasks" / task_id
@@ -104,9 +126,17 @@ def execute(service: WorkgroupService, task: TaskRecord) -> None:
         if os.name == "nt":
             from nanobot.workgroups.windows_job import WindowsJob
             job = WindowsJob()
-        with (directory / "events.jsonl").open("wb") as output, (directory / "stderr.log").open("wb") as errors:
+        with ExitStack() as stack:
+            output = stack.enter_context((directory / "events.jsonl").open("wb"))
+            errors = stack.enter_context((directory / "stderr.log").open("wb"))
+            input_file = subprocess.DEVNULL
+            if stdin is not None:
+                # A pipe write can block before cancellation/timeout polling starts.
+                request = directory / "request.md"
+                request.write_bytes(stdin)
+                input_file = stack.enter_context(request.open("rb"))
             process = subprocess.Popen(args, cwd=workspace, env=service.child_environment(),
-                                       stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+                                       stdin=input_file,
                                        stdout=output, stderr=errors, start_new_session=os.name != "nt",
                                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
             if job is not None:
@@ -116,9 +146,6 @@ def execute(service: WorkgroupService, task: TaskRecord) -> None:
                     process.kill()
                     process.wait(timeout=15)
                     raise
-            if stdin is not None and process.stdin is not None:
-                process.stdin.write(stdin)
-                process.stdin.close()
             started = time.monotonic()
             while process.poll() is None:
                 if service.task(task_id)["cancel_requested"]:
@@ -132,7 +159,8 @@ def execute(service: WorkgroupService, task: TaskRecord) -> None:
                 time.sleep(0.25)
         result = extract_result(str(task["backend"]), directory)
         if process.returncode != 0:
-            service.finish(task_id, "failed", result, tail(directory / "stderr.log", 4000) or f"CLI exited {process.returncode}")
+            error = extract_error(str(task["backend"]), directory) or tail(directory / "stderr.log", 4000)
+            service.finish(task_id, "failed", result, error or f"CLI exited {process.returncode}")
         elif not result:
             service.finish(task_id, "failed", error="CLI returned no final response; inspect task logs")
         else:

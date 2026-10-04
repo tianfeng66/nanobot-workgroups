@@ -1,5 +1,6 @@
 param([switch]$Dev, [switch]$ToolsOnly)
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
     throw 'This installer supports Windows x64. Windows ARM64 is not supported yet.'
 }
@@ -23,14 +24,17 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $installManifest = Get-Content -LiteralPath (Join-Path $installRoot 'scripts\windows-tools.json') -Raw | ConvertFrom-Json
 foreach ($installTool in $installManifest.tools) {
     $installArchive = Join-Path $installCache ($installTool.name + '-' + $installTool.version + '.zip')
-    if (-not (Test-Path -LiteralPath $installArchive)) {
+    $installArchiveValid = (Test-Path -LiteralPath $installArchive) -and ((Get-FileHash -LiteralPath $installArchive -Algorithm SHA256).Hash.ToLowerInvariant() -eq $installTool.sha256)
+    if (-not $installArchiveValid) {
         Write-Host "Downloading $($installTool.name) $($installTool.version)..."
-        $downloadParameters = @{ Uri=$installTool.url; OutFile=$installArchive; UseBasicParsing=$true }
+        $installPartial = $installArchive + '.partial'
+        $downloadParameters = @{ Uri=$installTool.url; OutFile=$installPartial; UseBasicParsing=$true; TimeoutSec=180 }
         if ($env:HTTPS_PROXY) { $downloadParameters.Proxy = $env:HTTPS_PROXY }
         Invoke-WebRequest @downloadParameters
-    }
-    if ((Get-FileHash -LiteralPath $installArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $installTool.sha256) {
-        throw "Checksum mismatch: $installArchive. Remove this archive and retry."
+        if ((Get-FileHash -LiteralPath $installPartial -Algorithm SHA256).Hash.ToLowerInvariant() -ne $installTool.sha256) {
+            throw "Checksum mismatch: $installPartial. Run install.cmd again to download a fresh archive."
+        }
+        Move-Item -LiteralPath $installPartial -Destination $installArchive -Force
     }
     $installDestination = Join-Path $installBin $installTool.output
     $installZip = [IO.Compression.ZipFile]::OpenRead($installArchive)
