@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>工作群组 · nanobot</title>
+<style>
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color:#202b34;background:#f6f7f9}*{box-sizing:border-box}body{margin:0}button,input,textarea,select{font:inherit}button{cursor:pointer;border:1px solid #cdd3d9;border-radius:6px;background:white;padding:9px 14px;color:inherit}button.primary{background:#214e66;color:white;border-color:#214e66}button:disabled{opacity:.5;cursor:default}input,textarea,select{border:1px solid #cdd3d9;border-radius:6px;padding:10px;background:white;width:100%;color:inherit}textarea{resize:vertical}header{background:white;border-bottom:1px solid #dde2e7;padding:20px 28px;display:flex;align-items:center;justify-content:space-between}h1{font-size:21px;margin:0}small,.muted{color:#687781;font-size:13px}.layout{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 80px)}aside{padding:24px 18px;border-right:1px solid #dde2e7}.group{display:block;width:100%;text-align:left;margin-top:10px;border-color:transparent;background:transparent}.group.active{background:#e6eef3;border-color:#c9dbe6}main{max-width:1100px;width:100%;padding:28px 36px}.row{display:flex;gap:12px;align-items:center}h2{margin:0 0 8px;font-size:24px}h3{font-size:15px;margin-top:28px}label{display:block;font-size:13px;margin:12px 0 6px}.task{border-top:1px solid #d9e0e6;padding:20px 0}.task pre{font:14px/1.7 system-ui,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0}.status{font-size:12px;padding:4px 8px;background:#e7ebef;border-radius:5px}.completed{background:#dfefe4;color:#286044}.failed,.interrupted{background:#f7e2df;color:#9b3e35}.running{background:#dfeef9;color:#245676}#error{color:#a32d29;white-space:pre-wrap}.hint{font-size:13px;line-height:1.8;color:#687781;overflow-wrap:anywhere}.empty{padding:50px 0;color:#687781}dialog{border:1px solid #cdd3d9;border-radius:10px;padding:28px;width:480px;max-width:95vw}dialog::backdrop{background:#202b3455}.backend{margin-left:16px;white-space:nowrap}.memory{margin-top:24px;border-top:1px solid #d9e0e6;padding-top:16px}.memory textarea{min-height:100px}#tasks{margin-top:28px}@media(max-width:760px){.layout{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid #dde2e7}main{padding:24px 18px}header{display:block}.backend{margin-left:0;display:block;margin-top:6px}}
+</style>
+<header><h1>工作群组 <small>nanobot personal</small></h1><div id="backends"></div></header>
+<div class="layout"><aside><button class="primary" id="new">＋ 创建群组</button><div id="groups"></div><p class="hint">每个群组拥有独立记忆与任务记录。执行任务依次排队，结果保存在 D 盘。</p></aside><main>
+<p id="error" role="alert"></p><div id="empty" class="empty">创建一个工作群组，邀请 Codex 与 OpenCode 开始处理任务。</div>
+<section id="detail" hidden><h2 id="name"></h2><div class="hint" id="workspace"></div>
+<h3>交给群组成员</h3><div class="row"><select id="backend" aria-label="执行成员"></select><select id="dependency" aria-label="前序任务"><option value="">独立任务</option></select></div>
+<label for="prompt">工作任务</label><textarea id="prompt" rows="4" placeholder="例如：@codex 检查项目结构，整理需要修复的问题。"></textarea>
+<p class="hint">可指定 @codex 或 @opencode；设置前序任务后，将在它成功完成时执行并读取它的结果。</p><button class="primary" id="submit">提交任务</button>
+<details class="memory"><summary>群组记忆 · 项目背景与工作约定</summary><label for="memory">每次任务都会读取这些记录</label><textarea id="memory"></textarea><button id="save-memory">保存记忆</button></details>
+<div id="tasks"></div></section><p class="hint" id="storage"></p>
+</main></div>
+<dialog id="create"><h2>创建工作群组</h2><form id="create-form"><label for="group-name">名称</label><input id="group-name" required maxlength="100" placeholder="例如：个人网站开发组"><label for="group-workspace">D 盘项目目录</label><input id="group-workspace" placeholder="留空自动创建独立项目目录"><p class="hint" id="roots"></p><div class="row" style="margin-top:20px"><button class="primary" type="submit">创建群组</button><button type="button" id="close-dialog">取消</button></div></form></dialog>
+<script>
+let selected='',state=null,lastTasks='',memoryDirty=false;
+const $=id=>document.getElementById(id);
+const statuses={queued:'排队中',running:'执行中',completed:'已完成',failed:'失败',cancelled:'已取消',interrupted:'执行中断'};
+function node(tag,text,cls){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el}
+async function api(path,data){const res=await fetch(path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const value=await res.json();if(!res.ok)throw Error(value.error||'请求失败');return value}
+async function action(fn){$('error').textContent='';try{await fn();await refresh()}catch(e){$('error').textContent=e.message}}
+async function refresh(){
+ state=await api('/api/state'+(selected?'?group='+encodeURIComponent(selected):''));
+ if(!selected&&state.groups.length){selected=state.groups[0].id;return refresh()}
+ $('groups').replaceChildren();state.groups.forEach(g=>{const b=node('button',g.name,'group'+(selected===g.id?' active':''));b.onclick=()=>{selected=g.id;lastTasks='';memoryDirty=false;action(refresh)};$('groups').append(b)});
+ $('backends').replaceChildren();state.backends.forEach(b=>$('backends').append(node('span',b.name+' · '+(b.available?'已检测到 CLI':'未安装'),'backend muted')));
+ $('storage').textContent='本地存储：'+state.storage;$('roots').textContent='允许的项目根目录：'+state.allowed_roots.join('，');
+ const group=state.groups.find(g=>g.id===selected);$('detail').hidden=!group;$('empty').hidden=!!group;if(!group)return;
+ $('name').textContent=group.name;$('workspace').textContent=group.workspace;
+ if(!memoryDirty)$('memory').value=group.memory;
+ const current=$('backend').value;$('backend').replaceChildren();group.members.forEach(m=>{const option=node('option',m);option.value=m;$('backend').append(option)});if(group.members.includes(current))$('backend').value=current;
+ const dep=$('dependency').value;$('dependency').replaceChildren(node('option','独立任务'));$('dependency').firstChild.value='';state.tasks.filter(t=>!['failed','cancelled','interrupted'].includes(t.status)).forEach(t=>{const o=node('option',t.backend+' · '+t.prompt.slice(0,25));o.value=t.id;$('dependency').append(o)});$('dependency').value=dep;
+ const fingerprint=JSON.stringify(state.tasks);if(fingerprint===lastTasks)return;lastTasks=fingerprint;$('tasks').replaceChildren();
+ if(!state.tasks.length)$('tasks').append(node('p','这个群组还没有任务。','muted'));
+ state.tasks.forEach(t=>{const item=node('article',undefined,'task'),row=node('div',undefined,'row');row.append(node('strong',t.backend),node('span',statuses[t.status]||t.status,'status '+t.status),node('small',new Date(t.created*1000).toLocaleString()));if(['queued','running'].includes(t.status)){const cancel=node('button','取消');cancel.onclick=()=>action(()=>api('/api/cancel',{task_id:t.id}));row.append(cancel)}item.append(row,node('pre',t.prompt));if(t.result)item.append(node('pre',t.result));if(t.error)item.append(node('pre',t.error,'failed'));const d=node('details'),s=node('summary','任务编号与结果目录');d.append(s,node('p',t.id+' · '+state.storage+'\\tasks\\'+t.id,'hint'));item.append(d);$('tasks').append(item)});
+}
+$('new').onclick=()=>$('create').showModal();$('close-dialog').onclick=()=>$('create').close();
+$('create-form').onsubmit=e=>{e.preventDefault();action(async()=>{const g=await api('/api/groups',{name:$('group-name').value,workspace:$('group-workspace').value});selected=g.id;lastTasks='';$('create').close();$('create-form').reset()})};
+$('submit').onclick=()=>action(async()=>{const text=$('prompt').value.trim();if(!text)throw Error('请填写任务');const mention=text.match(/^@(codex|opencode)\s+/);const backend=mention?mention[1]:$('backend').value;const target=state.backends.find(b=>b.name===backend);if(!target?.available)throw Error('请先安装 '+backend+' 并配置它的登录或模型');$('submit').disabled=true;try{await api('/api/tasks',{group_id:selected,backend,prompt:mention?text.slice(mention[0].length):text,dependency:$('dependency').value});$('prompt').value=''}finally{$('submit').disabled=false}});
+$('memory').oninput=()=>{memoryDirty=true};
+$('save-memory').onclick=()=>action(async()=>{await api('/api/memory',{group_id:selected,memory:$('memory').value});memoryDirty=false});
+action(refresh);setInterval(()=>{if(!$('create').open)refresh().catch(e=>$('error').textContent=e.message)},2500);
+</script></html>

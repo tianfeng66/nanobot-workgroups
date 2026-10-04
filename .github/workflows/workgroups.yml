@@ -1,0 +1,38 @@
+name: Workgroups Windows checks
+on:
+  push:
+    paths:
+      - 'nanobot/workgroups/**'
+      - 'nanobot/config/**'
+      - 'nanobot/agent/tools/workgroups.py'
+      - 'scripts/setup_personal.py'
+      - 'install.ps1'
+      - 'scripts/windows-tools.json'
+      - 'tests/workgroups/**'
+      - '.github/workflows/workgroups.yml'
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install as a new user
+        shell: powershell
+        run: .\install.ps1 -Dev
+      - name: Validate workgroup contracts
+        shell: powershell
+        run: |
+          .\.venv\Scripts\python.exe -m pytest tests/workgroups tests/config/test_config_paths.py tests/tools/test_tool_loader.py -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\.venv\Scripts\python.exe -m ruff check nanobot/workgroups nanobot/agent/tools/workgroups.py scripts/setup_personal.py
+      - name: Check native CLIs
+        shell: powershell
+        run: |
+          .\bin\codex.exe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:NANOBOT_HOME = Join-Path $pwd 'personal-data'
+          .\start-personal.ps1 -Mode Doctor

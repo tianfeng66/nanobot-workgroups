@@ -1,0 +1,61 @@
+{
+  "python": "3.12.13",
+  "tools": [
+    {
+      "name": "uv",
+      "version": "0.11.21",
+      "url": "https://github.com/astral-sh/uv/releases/download/0.11.21/uv-x86_64-pc-windows-msvc.zip",
+      "sha256": "ace861f360c6de2babedc1607d0f454b6b09a820dbc8182dc15af927e4df9589",
+      "entry": "uv.exe",
+      "output": "uv.exe"
+    },
+    {
+      "name": "codex",
+      "version": "0.160.0",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.160.0/codex-x86_64-pc-windows-msvc.exe.zip",
+      "sha256": "aad5cf364c873b148e462b58fd06ad7b37fcab9b996be67133386b9322df26bb",
+      "entry": "codex-x86_64-pc-windows-msvc.exe",
+      "output": "codex.exe"
+    },
+    {
+      "name": "codex-command-runner",
+      "version": "0.160.0",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.160.0/codex-command-runner-x86_64-pc-windows-msvc.exe.zip",
+      "sha256": "47b6bd142a106db2fff0d51dd57caad5a5a3fae2f39cc6f6e5b4504b6406cda9",
+      "entry": "codex-command-runner-x86_64-pc-windows-msvc.exe",
+      "output": "codex-command-runner.exe"
+    },
+    {
+      "name": "codex-sandbox-setup",
+      "version": "0.160.0",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.160.0/codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe.zip",
+      "sha256": "d58aa0993fcc8b148172592a75473af04e1eb060f1ee5bf30b83ecfe1bee7647",
+      "entry": "codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe",
+      "output": "codex-windows-sandbox-setup.exe"
+    },
+    {
+      "name": "codex-sandbox-service",
+      "version": "0.160.0",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.160.0/codex-windows-sandbox-service-x86_64-pc-windows-msvc.exe.zip",
+      "sha256": "fc716ee6eca6907636fa43fb3b9bdaa9c0c74b701c21bdb8f0674a5e4ce5b8e7",
+      "entry": "codex-windows-sandbox-service-x86_64-pc-windows-msvc.exe",
+      "output": "codex-windows-sandbox-service.exe"
+    },
+    {
+      "name": "codex-code-mode-host",
+      "version": "0.160.0",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.160.0/codex-code-mode-host-x86_64-pc-windows-msvc.exe.zip",
+      "sha256": "e0911fa8f236ded7d96cf57452b0fbd92d820033f4d7515fc312a26b2b63721f",
+      "entry": "codex-code-mode-host-x86_64-pc-windows-msvc.exe",
+      "output": "codex-code-mode-host.exe"
+    },
+    {
+      "name": "opencode",
+      "version": "1.18.34",
+      "url": "https://github.com/anomalyco/opencode/releases/download/v1.18.34/opencode-windows-x64-baseline.zip",
+      "sha256": "f89ab2720050780a450e3cf3e48ac3f0409235b46b6c548c69aa2b7051d716f4",
+      "entry": "opencode.exe",
+      "output": "opencode.exe"
+    }
+  ]
+}
