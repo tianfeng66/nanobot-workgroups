@@ -232,6 +232,14 @@ class WorkgroupService:
         for key, path in paths.items():
             path.mkdir(parents=True, exist_ok=True)
             env[key] = str(path)
+        # The one-click installer does not put its Python on the system PATH.
+        env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
+        if os.name == "nt":
+            codex_config = paths["CODEX_HOME"] / "config.toml"
+            if not codex_config.exists():
+                # Background execution cannot complete an administrator setup prompt.
+                # Enable the native restricted-token sandbox; keep custom config intact.
+                codex_config.write_text('[windows]\nsandbox = "unelevated"\n', encoding="utf-8")
         env["PYTHONUTF8"] = "1"
         env["OPENCODE_DISABLE_AUTOUPDATE"] = "1"
         env["OPENCODE_CONFIG_CONTENT"] = json.dumps({"permission": {"external_directory": "deny"}})

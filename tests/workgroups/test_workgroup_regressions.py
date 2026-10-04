@@ -1,9 +1,11 @@
 """Regression contracts for cancellation, event failures and retained context."""
 import json
+import os
 import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -74,3 +76,23 @@ def test_queued_backlog_does_not_remove_recent_completed_context(service):
         service.submit(group['id'], 'opencode', '等待处理')
     task = service.submit(group['id'], 'codex', '继续实现')
     assert '使用 PostgreSQL 保存数据' in worker.build_prompt(service, task)
+
+
+def test_installed_python_is_available_to_cli_commands(service):
+    command = 'python -c "import sys; print(sys.executable)"' if os.name == 'nt' else ['python', '-c', 'import sys; print(sys.executable)']
+    result = subprocess.run(command, shell=os.name == 'nt',
+                            env=service.child_environment(), capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert Path(result.stdout.strip()).resolve() == Path(sys.executable).resolve()
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows native sandbox configuration')
+@pytest.mark.parametrize('custom_config', [False, True])
+def test_cli_home_enables_sandbox_and_preserves_custom_config(service, custom_config):
+    config = service.root / 'runtime' / 'codex' / 'config.toml'
+    if custom_config:
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text('[windows]\nsandbox = "elevated"\n', encoding='utf-8')
+    service.child_environment()
+    expected = 'elevated' if custom_config else 'unelevated'
+    assert config.read_text(encoding='utf-8') == f'[windows]\nsandbox = "{expected}"\n'

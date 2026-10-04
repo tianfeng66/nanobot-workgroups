@@ -47,6 +47,7 @@ OpenCode 登录后在 `personal-data/workgroups/runtime/xdg-config/opencode/open
 - 安装器下载版本锁定、SHA-256 校验的官方 CLI。
 - 服务仅监听 `127.0.0.1:8877`，无需公网服务器。
 - Codex 使用 `workspace-write` 沙箱。OpenCode 外部目录限制属于应用权限，不是操作系统隔离。
+- 首次运行在独立 Codex 配置中启用 Windows `unelevated` 原生沙箱，适合无需管理员配置的后台执行。已配置的沙箱模式会保留；需要更强隔离时可按[官方说明](https://developers.openai.com/codex/windows)配置 `elevated`。
 - 访问已有项目：在 `personal-data/config.json` 的 `tools.workgroups.allowedWorkspaceRoots` 加入根目录，再重启。
 
 配置与故障排查：[使用说明](README-PERSONAL.md)。上游说明：[README-UPSTREAM.md](README-UPSTREAM.md)。
