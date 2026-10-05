@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import subprocess
+import threading
 import time
 from contextlib import ExitStack
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from filelock import FileLock, Timeout
 
+from nanobot.workgroups.assistant import AssistantService
 from nanobot.workgroups.service import TaskRecord, WorkgroupService
 
 if TYPE_CHECKING:
@@ -61,12 +63,15 @@ def command_for(service: WorkgroupService, task: TaskRecord, directory: Path) ->
     executable = service.executable(backend)
     workspace = service.check_workspace(str(service.group(str(task["group_id"]))["workspace"]))
     prompt = build_prompt(service, task)
+    images = AssistantService(service).task_images(str(task['id']))
     if backend == "codex":
         # No approval/sandbox bypass. Prompts are supplied on stdin, never shell-interpolated.
         args = [executable, "exec", "--json", "--sandbox", "workspace-write", "--skip-git-repo-check",
                 "--color", "never", "-C", str(workspace), "-o", str(directory / "result.md")]
         if service.config.codex_model:
             args.extend(["--model", service.config.codex_model])
+        for image in images:
+            args.extend(['--image', str(image)])
         return args + ["-"], prompt.encode("utf-8")
     # Attach a local instruction file rather than putting user text into a shell
     # command or the Windows command-line length limit.
@@ -74,6 +79,8 @@ def command_for(service: WorkgroupService, task: TaskRecord, directory: Path) ->
     args = [executable, "run", "请执行附件中的本次用户任务。", "--format", "json", "--dir", str(workspace), "--file", str(directory / "request.md")]
     if service.config.opencode_model:
         args.extend(["--model", service.config.opencode_model])
+    for image in images:
+        args.extend(['--file', str(image)])
     return args, None
 
 
@@ -179,6 +186,19 @@ def run_worker(service: WorkgroupService) -> None:
     try:
         with FileLock(service.root / "worker.lock", timeout=0):
             service.recover()
+            assistant = AssistantService(service)
+            stop_maintenance = threading.Event()
+
+            def maintain():
+                while not stop_maintenance.is_set():
+                    try:
+                        assistant.tick()
+                    except Exception as exc:
+                        print(f'Assistant maintenance failed: {exc}', flush=True)
+                    stop_maintenance.wait(10)
+
+            maintenance = threading.Thread(target=maintain, daemon=True)
+            maintenance.start()
             (service.root / "worker.pid").write_text(str(os.getpid()), encoding="ascii")
             try:
                 while True:
@@ -188,6 +208,8 @@ def run_worker(service: WorkgroupService) -> None:
                     else:
                         time.sleep(0.5)
             finally:
+                stop_maintenance.set()
+                maintenance.join(timeout=5)
                 (service.root / "worker.pid").unlink(missing_ok=True)
     except Timeout:
         return  # The existing consumer owns the queue.
