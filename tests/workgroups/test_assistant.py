@@ -7,11 +7,11 @@ import threading
 
 import pytest
 
-from nanobot.workgroups.__main__ import create_server
+from nanobot.workgroups.__main__ import create_server, note_page
 from nanobot.workgroups.assistant import AssistantService
 from nanobot.workgroups.config import WorkgroupsConfig
 from nanobot.workgroups.service import WorkgroupService
-from nanobot.workgroups.worker import command_for
+from nanobot.workgroups.worker import build_prompt, command_for
 
 
 @pytest.fixture
@@ -50,6 +50,9 @@ def test_inbox_deduplicates_and_writes_obsidian_note_without_moving_original(ass
     assert saved['status'] == 'ready'
     assert (assistant.root / 'inbox' / '智能体.md').exists()
     assert 'Codex 负责实现' in (assistant.root / 'library' / (document['id'] + '.md')).read_text(encoding='utf-8')
+    note = (assistant.root / 'library' / (document['id'] + '.md')).read_text(encoding='utf-8')
+    assert '## 提取文字' not in note and '# 方案' not in note
+    assert assistant.document(document['id'])['content'].startswith('# 方案')
     restarted = AssistantService(assistant.service)
     assert restarted.document(document['id'])['summary'] == saved['summary']
 
@@ -113,6 +116,54 @@ def test_images_are_attached_to_native_cli_summary_tasks(assistant, monkeypatch)
     task = assistant.service.task(document['task_id'])
     args, _ = command_for(assistant.service, task, assistant.root)
     assert args[args.index('--image') + 1] == document['source']
+
+
+def test_new_document_and_question_do_not_receive_other_documents_or_group_memory(assistant):
+    first = assistant.upload('first.md', '无关资料：火星种植实验。'.encode())
+    complete_summary(assistant, first)
+    second = assistant.upload('second.md', '预算方案：预算 300 元，分两阶段实施。'.encode())
+    queued = assistant.summarize(second['id'], 'codex')
+    task = assistant.service.task(queued['task_id'])
+    assistant.service.set_memory(task['group_id'], '无关的火星研究结果')
+    prompt = build_prompt(assistant.service, task)
+    assert '预算 300 元' in prompt and '火星' not in prompt and 'Codex 负责实现' not in prompt
+    question = assistant.ask('预算方案', 'codex')
+    assert '火星' not in build_prompt(assistant.service, assistant.service.task(question['task_id']))
+
+
+def test_pdf_print_footers_are_removed_but_original_page_numbers_and_body_are_preserved(assistant, tmp_path):
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+    writer = PdfWriter()
+    for number in (1, 2):
+        page = writer.add_blank_page(width=300, height=400)
+        font = DictionaryObject({NameObject('/Type'): NameObject('/Font'), NameObject('/Subtype'): NameObject('/Type1'), NameObject('/BaseFont'): NameObject('/Helvetica')})
+        page[NameObject('/Resources')] = DictionaryObject({NameObject('/Font'): DictionaryObject({NameObject('/F1'): writer._add_object(font)})})
+        lines = ['2026/10/5 11:21 Printed article', f'Part {number}', 'Context', 'Important repeated evidence',
+                 f'Budget {number * 300}', 'End of body', '2026/10/5 11:21 Printed article', f'https://example.com/article {number}/2']
+        stream = DecodedStreamObject()
+        stream.set_data(('BT /F1 12 Tf 20 350 Td ' + ' 0 -20 Td '.join(f'({line}) Tj' for line in lines) + ' ET').encode())
+        page[NameObject('/Contents')] = writer._add_object(stream)
+    path = tmp_path / 'printed.pdf'
+    writer.write(path)
+    document = assistant.upload('printed.pdf', path.read_bytes())
+    assert '[第 1 页]' in document['content'] and '[第 2 页]' in document['content']
+    assert 'Budget 600' in document['content']
+    assert document['content'].count('Important repeated evidence') == 2
+    assert 'https://example.com/article' not in document['content'] and '11:21' not in document['content']
+    # An existing import gets the same improved extraction when re-organized.
+    with assistant.service.connect() as db:
+        db.execute('UPDATE documents SET content=? WHERE id=?', ('old extraction without pages', document['id']))
+    queued = assistant.summarize(document['id'], 'codex')
+    assert '[第 2 页]' in assistant.service.task(queued['task_id'])['prompt']
+
+
+def test_readable_note_renders_tables_and_never_executes_document_html_or_loads_images():
+    page = note_page({'id': 'test', 'title': '<script>title</script>', 'category': '资料', 'tags': ['学习'],
+                     'origin': 'article.pdf', 'summary': '## 关键事实\n\n| 对象 | 数量 |\n| --- | --- |\n| 样本 | 52 |\n\n<script>alert(1)</script>\n\n![tracking](https://example.com/track.png)\n\n[unsafe](javascript:alert(1))'}).decode()
+    assert '<table>' in page and '<h2>关键事实</h2>' in page
+    assert '<script>' not in page and '&lt;script&gt;' in page
+    assert 'src="https://example.com/track.png"' not in page and 'href="javascript:' not in page
 
 
 def test_automatic_inbox_is_opt_in_and_does_not_duplicate_queued_summaries(assistant):
@@ -211,6 +262,7 @@ def test_assistant_http_upload_authorization_and_source_download(assistant, monk
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     token = (assistant.service.root / 'dashboard.token').read_text().strip()
+    last_headers = {}
     def request(method, path, body=None, cookie=True, origin=None):
         connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
         headers = {'Content-Type': 'application/json'}
@@ -220,6 +272,8 @@ def test_assistant_http_upload_authorization_and_source_download(assistant, monk
             headers['Origin'] = origin
         connection.request(method, path, json.dumps(body).encode() if body is not None else None, headers)
         response = connection.getresponse()
+        last_headers.clear()
+        last_headers.update(response.getheaders())
         data = response.read()
         status = response.status
         connection.close()
@@ -230,6 +284,16 @@ def test_assistant_http_upload_authorization_and_source_download(assistant, monk
         status, data = request('POST', '/api/assistant/upload', {'filename': 'budget.txt', 'content': base64.b64encode(b'Budget 300').decode()})
         assert status == 200
         document = json.loads(data)
+        assert request('GET', '/api/assistant/source?id=' + document['id'])[1] == b'Budget 300'
+        assert '-source.txt' in last_headers['Content-Disposition']
+        assert "filename*=UTF-8''" in last_headers['Content-Disposition']
+        assert request('GET', '/note?id=' + document['id'])[0] == 400
+        complete_summary(assistant, document)
+        assert 'Codex 负责实现'.encode() in request('GET', '/note?id=' + document['id'])[1]
+        assert request('GET', '/note?id=' + document['id'], cookie=False)[0] == 200
+        assert '访问码'.encode() in request('GET', '/note?id=' + document['id'], cookie=False)[1]
+        assert request('GET', '/api/assistant/note?id=' + document['id'])[0] == 200
+        assert '-note.md' in last_headers['Content-Disposition']
         assert request('GET', '/api/assistant/source?id=' + document['id'])[1] == b'Budget 300'
         assert request('GET', '/api/assistant/source?id=../../config.json')[0] == 400
         assert request('POST', '/api/assistant/upload', {'filename': 'budget.txt', 'content': '%%%bad'})[0] == 400

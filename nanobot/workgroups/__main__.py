@@ -6,14 +6,18 @@ import argparse
 import base64
 import hmac
 import json
+import re
 import secrets
 import subprocess
 import webbrowser
+from html import escape
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from string import Template
+from urllib.parse import parse_qs, quote, urlparse
 
+from markdown_it import MarkdownIt
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from nanobot.config.loader import load_config, set_config_path
@@ -85,6 +89,19 @@ class PlanControlInput(Input):
     notes: str = Field(default='', max_length=8000)
 
 
+def note_page(document: dict) -> bytes:
+    if not document['summary']:
+        raise ValueError('资料尚未整理，请先点击“用模型整理”')
+    # Raw HTML and embedded images are data, never executable markup or requests.
+    markdown = MarkdownIt('commonmark', {'html': False}).enable('table').disable('image')
+    template = Template(Path(__file__).with_name('note.html').read_text(encoding='utf-8'))
+    return template.substitute(
+        title=escape(document['title']), category=escape(document['category']),
+        tags=escape(' · '.join(document['tags'])), body=markdown.render(document['summary']),
+        source=escape(Path(document['origin']).name), document_id=quote(document['id'], safe=''),
+    ).encode('utf-8')
+
+
 def create_server(service: WorkgroupService, config_path: Path, port: int) -> ThreadingHTTPServer:
     assistant = AssistantService(service)
     token_file = service.root / "dashboard.token"
@@ -114,8 +131,9 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
                 return False
             return "workgroups" in cookie and hmac.compare_digest(cookie["workgroups"].value, token)
 
-        def send_page(self, page: str) -> None:
-            data = Path(__file__).with_name(page).read_bytes()
+        def send_page(self, page: str, data: bytes | None = None) -> None:
+            if data is None:
+                data = Path(__file__).with_name(page).read_bytes()
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.send_header('Content-Length', str(len(data)))
@@ -154,7 +172,7 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
                 self.send_header('Referrer-Policy', 'no-referrer')
                 self.end_headers()
                 return
-            if url.path == '/login' or (url.path in ('/', '/assistant', '/task') and not self.authorized()):
+            if url.path == '/login' or (url.path in ('/', '/assistant', '/task', '/note') and not self.authorized()):
                 self.send_page('login.html')
                 return
             if not self.authorized():
@@ -173,6 +191,11 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
                     self.send_json({"error": str(exc)}, 400)
             elif url.path == '/api/assistant/state':
                 self.send_json(assistant.state())
+            elif url.path == '/note':
+                try:
+                    self.send_page('note.html', note_page(assistant.document(query.get('id', [''])[0])))
+                except (ValueError, OSError) as exc:
+                    self.send_json({'error': str(exc)}, 400)
             elif url.path == '/api/task':
                 try:
                     self.send_json(service.task(query.get('id', [''])[0]))
@@ -198,8 +221,12 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
                         raise ValueError('Invalid document path')
                     data = path.read_bytes()
                     self.send_response(200)
+                    original = url.path.endswith('/source')
+                    label = '原始资料' if original else '整理笔记'
+                    filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '-', document['title'])[:100] + '-' + label + path.suffix
+                    fallback = document['id'] + ('-source' if original else '-note') + path.suffix
                     self.send_header('Content-Type', 'application/octet-stream')
-                    self.send_header('Content-Disposition', f'attachment; filename="{path.name}"')
+                    self.send_header('Content-Disposition', f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(filename, safe="")}')
                     self.send_header('Content-Length', str(len(data)))
                     self.send_header('X-Content-Type-Options', 'nosniff')
                     self.send_header('Cache-Control', 'no-store')

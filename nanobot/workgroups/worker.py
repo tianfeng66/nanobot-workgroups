@@ -43,6 +43,9 @@ def stop_process(process: subprocess.Popen, job: WindowsJob | None = None) -> No
 
 
 def build_prompt(service: WorkgroupService, task: TaskRecord) -> str:
+    if AssistantService(service).is_reading_task(str(task['id'])):
+        # Other documents' summaries and group memory are not evidence for this task.
+        return str(task['prompt'])
     group = service.group(str(task["group_id"]))
     recent = reversed(service.recent_completed(str(task["group_id"])))
     context = "\n\n".join(f"{item['backend']}: {str(item['result'])[-2000:]}" for item in recent)
