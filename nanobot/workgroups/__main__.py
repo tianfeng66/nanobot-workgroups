@@ -72,6 +72,10 @@ class SummaryInput(Input):
     backend: str
 
 
+class DocumentInput(Input):
+    document_id: str
+
+
 class QuestionInput(Input):
     question: str = Field(min_length=1, max_length=2000)
     backend: str
@@ -95,9 +99,14 @@ def note_page(document: dict) -> bytes:
     # Raw HTML and embedded images are data, never executable markup or requests.
     markdown = MarkdownIt('commonmark', {'html': False}).enable('table').disable('image')
     template = Template(Path(__file__).with_name('note.html').read_text(encoding='utf-8'))
+    body = markdown.render(document['summary'])
+    sections = document.get('sections', [])
+    if sections:
+        details = '\n\n'.join(f"## 第 {part['position']} 段（原文字符 {part['start']}–{part['end']}）\n\n{part['summary']}" for part in sections)
+        body += f'<details><summary>查看逐段笔记（{len(sections)} 段）</summary>{markdown.render(details)}</details>'
     return template.substitute(
         title=escape(document['title']), category=escape(document['category']),
-        tags=escape(' · '.join(document['tags'])), body=markdown.render(document['summary']),
+        tags=escape(' · '.join(document['tags'])), body=body,
         source=escape(Path(document['origin']).name), document_id=quote(document['id'], safe=''),
     ).encode('utf-8')
 
@@ -246,16 +255,24 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
             if origin and origin != f"http://{host}":
                 self.send_json({"error": "Cross-origin request denied"}, 403)
                 return
-            if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
-                self.send_json({"error": "Expected application/json"}, 400)
+            binary_upload = route == '/api/assistant/upload-file'
+            content_type = 'application/octet-stream' if binary_upload else 'application/json'
+            if self.headers.get("Content-Type", "").split(";")[0] != content_type:
+                self.send_json({"error": f"Expected {content_type}"}, 400)
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                limit = 12 * 1024 * 1024 if route == '/api/assistant/upload' else 300000
+                limit = (MAX_FILE * 4 // 3 + 8192) if route == '/api/assistant/upload' else 300000
+                if binary_upload:
+                    limit = MAX_FILE
                 if route == '/auth/login':
                     limit = 2048
                 if not 0 < length <= limit:
-                    raise ValueError("Invalid request size")
+                    raise ValueError('单文件最多 50 MB' if binary_upload else 'Invalid request size')
+                if binary_upload:
+                    filename = parse_qs(urlparse(self.path).query).get('filename', [''])[0]
+                    self.send_json(assistant.upload(filename, self.rfile.read(length)))
+                    return
                 data = json.loads(self.rfile.read(length))
                 if not isinstance(data, dict):
                     raise ValueError("Expected an object")
@@ -289,7 +306,7 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
                 elif route == '/api/assistant/upload':
                     request = UploadInput.model_validate(data)
                     if len(request.content) > (MAX_FILE * 4 // 3 + 4):
-                        raise ValueError('单文件最多 8 MB')
+                        raise ValueError('单文件最多 50 MB')
                     result = assistant.upload(request.filename, base64.b64decode(request.content, validate=True))
                 elif route == '/api/assistant/scan':
                     Input.model_validate(data)
@@ -302,6 +319,9 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
                     request = SummaryInput.model_validate(data)
                     result = assistant.summarize(request.document_id, request.backend)
                     service.start_worker(config_path)
+                elif route == '/api/assistant/cancel-summary':
+                    request = DocumentInput.model_validate(data)
+                    result = assistant.cancel_summary(request.document_id)
                 elif route == '/api/assistant/ask':
                     request = QuestionInput.model_validate(data)
                     result = assistant.ask(request.question, request.backend)
