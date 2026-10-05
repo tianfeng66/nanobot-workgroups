@@ -6,14 +6,11 @@ $desktopLauncher = Join-Path $desktopInstallRoot 'scripts\desktop_launcher.py'
 if (-not (Test-Path -LiteralPath $desktopPython)) { throw 'Run install.cmd before creating the desktop entry.' }
 if (-not $DesktopDirectory -or -not [IO.Path]::IsPathRooted($DesktopDirectory)) { throw 'An absolute desktop directory is required.' }
 New-Item -ItemType Directory -Path $DesktopDirectory -Force | Out-Null
-$desktopShell = New-Object -ComObject WScript.Shell
-$desktopShortcut = $desktopShell.CreateShortcut((Join-Path $DesktopDirectory 'nanobot 个人工作台.lnk'))
-$desktopShortcut.TargetPath = $desktopPython
-$desktopShortcut.Arguments = '"' + $desktopLauncher + '"'
-$desktopShortcut.WorkingDirectory = $desktopInstallRoot
-$desktopShortcut.Description = 'nanobot personal workspace'
-$desktopShortcut.IconLocation = (Join-Path $env:SystemRoot 'System32\shell32.dll') + ',20'
-$desktopShortcut.Save()
+if (-not ('NanobotDesktop.Shortcut' -as [type])) {
+    Add-Type -Path (Join-Path $PSScriptRoot 'desktop_shortcut.cs')
+}
+[NanobotDesktop.Shortcut]::Save((Join-Path $DesktopDirectory 'nanobot 个人工作台.lnk'), $desktopPython,
+    ('"' + $desktopLauncher + '"'), $desktopInstallRoot, (Join-Path $desktopInstallRoot 'nanobot\workgroups\icon.ico'))
 if (-not $NoProtocol) {
     $desktopProtocol = 'HKCU:\Software\Classes\nanobot-workgroups'
     New-Item -Path ($desktopProtocol + '\shell\open\command') -Force | Out-Null

@@ -134,6 +134,17 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
                 return
             url = urlparse(self.path)
             query = parse_qs(url.query)
+            if url.path in ('/favicon.ico', '/app-icon.png'):
+                filename, content_type = ('icon.ico', 'image/x-icon') if url.path == '/favicon.ico' else ('icon.png', 'image/png')
+                data = Path(__file__).with_name(filename).read_bytes()
+                self.send_response(200)
+                self.send_header('Content-Type', content_type)
+                self.send_header('Content-Length', str(len(data)))
+                self.send_header('Cache-Control', 'public, max-age=3600')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.end_headers()
+                self.wfile.write(data)
+                return
             if url.path == "/" and hmac.compare_digest(query.get("token", [""])[0], token):
                 self.send_response(303)
                 destination = query.get('next', ['/'])[0]

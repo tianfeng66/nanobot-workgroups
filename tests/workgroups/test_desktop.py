@@ -53,6 +53,8 @@ def test_browser_login_keeps_private_routes_guarded_and_rejects_cross_origin(des
         status, page, _ = request('GET', '/assistant')
         assert status == 200 and '登录'.encode() in page and 'nanobot-workgroups://open'.encode() in page
         assert token.encode() not in page
+        status, icon, _ = request('GET', '/app-icon.png')
+        assert status == 200 and icon.startswith(b'\x89PNG')
         assert request('GET', '/api/assistant/state')[0] == 401
         assert request('POST', '/auth/login', {'token': token}, origin='https://evil.example')[0] == 403
         assert request('POST', '/auth/login', {'token': 'wrong'})[0] == 401
@@ -123,9 +125,12 @@ def test_windows_shortcut_points_to_hidden_launcher_in_installation_with_spaces(
     (root / 'scripts').mkdir(parents=True)
     (root / '.venv/Scripts').mkdir(parents=True)
     (root / '.venv/Scripts/pythonw.exe').write_bytes(b'not executed')
+    (root / 'nanobot/workgroups').mkdir(parents=True)
+    shutil.copy2(Path(__file__).resolve().parents[2] / 'nanobot/workgroups/icon.ico', root / 'nanobot/workgroups/icon.ico')
     desktop = tmp_path / 'desktop'
     installer = root / 'scripts/install_desktop.ps1'
     shutil.copy2(Path(__file__).resolve().parents[2] / 'scripts/install_desktop.ps1', installer)
+    shutil.copy2(Path(__file__).resolve().parents[2] / 'scripts/desktop_shortcut.cs', installer.with_name('desktop_shortcut.cs'))
     env = {key: value for key, value in os.environ.items() if key.upper() != 'PSMODULEPATH'}
     result = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                              str(installer), '-DesktopDirectory', str(desktop), '-NoProtocol'],
@@ -134,13 +139,14 @@ def test_windows_shortcut_points_to_hidden_launcher_in_installation_with_spaces(
     links = list(desktop.glob('*.lnk'))
     assert len(links) == 1 and links[0].name == 'nanobot 个人工作台.lnk'
     # Read the actual shell shortcut; do not merely assert installer source text.
-    inspect = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new(); $s=(New-Object -ComObject WScript.Shell).CreateShortcut($args[0]); @{target=$s.TargetPath; arguments=$s.Arguments; directory=$s.WorkingDirectory} | ConvertTo-Json -Compress"
+    inspect = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new(); Add-Type -Path $args[1]; [NanobotDesktop.Shortcut]::Read($args[0]) | ConvertTo-Json -Compress"
     script = tmp_path / 'inspect.ps1'
     script.write_text(inspect, encoding='utf-8-sig')
-    result = subprocess.run(['powershell.exe', '-NoProfile', '-File', str(script), str(links[0])],
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-File', str(script), str(links[0]), str(installer.with_name('desktop_shortcut.cs'))],
                             env=env, capture_output=True, timeout=15)
     assert result.returncode == 0
     values = json.loads(result.stdout.decode('utf-8-sig'))
     assert Path(values['target']) == root / '.venv/Scripts/pythonw.exe'
     assert values['arguments'] == '"' + str(root / 'scripts/desktop_launcher.py') + '"'
     assert Path(values['directory']) == root
+    assert Path(values['icon']) == root / 'nanobot/workgroups/icon.ico'

@@ -8,6 +8,7 @@ on:
       - 'scripts/setup_personal.py'
       - 'scripts/desktop_launcher.py'
       - 'scripts/install_desktop.ps1'
+      - 'scripts/desktop_shortcut.cs'
       - '打开工作台.vbs'
       - 'install.ps1'
       - 'scripts/windows-tools.json'
