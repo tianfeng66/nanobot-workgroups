@@ -124,7 +124,6 @@ def test_windows_shortcut_points_to_hidden_launcher_in_installation_with_spaces(
     (root / '.venv/Scripts').mkdir(parents=True)
     (root / '.venv/Scripts/pythonw.exe').write_bytes(b'not executed')
     desktop = tmp_path / 'desktop'
-    desktop.mkdir()
     installer = root / 'scripts/install_desktop.ps1'
     shutil.copy2(Path(__file__).resolve().parents[2] / 'scripts/install_desktop.ps1', installer)
     env = {key: value for key, value in os.environ.items() if key.upper() != 'PSMODULEPATH'}

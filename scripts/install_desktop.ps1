@@ -4,6 +4,8 @@ $desktopInstallRoot = Split-Path -Parent $PSScriptRoot
 $desktopPython = Join-Path $desktopInstallRoot '.venv\Scripts\pythonw.exe'
 $desktopLauncher = Join-Path $desktopInstallRoot 'scripts\desktop_launcher.py'
 if (-not (Test-Path -LiteralPath $desktopPython)) { throw 'Run install.cmd before creating the desktop entry.' }
+if (-not $DesktopDirectory -or -not [IO.Path]::IsPathRooted($DesktopDirectory)) { throw 'An absolute desktop directory is required.' }
+New-Item -ItemType Directory -Path $DesktopDirectory -Force | Out-Null
 $desktopShell = New-Object -ComObject WScript.Shell
 $desktopShortcut = $desktopShell.CreateShortcut((Join-Path $DesktopDirectory 'nanobot 个人工作台.lnk'))
 $desktopShortcut.TargetPath = $desktopPython
