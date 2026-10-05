@@ -126,7 +126,7 @@ def test_windows_shortcut_points_to_hidden_launcher_in_installation_with_spaces(
     (root / '.venv/Scripts').mkdir(parents=True)
     (root / '.venv/Scripts/pythonw.exe').write_bytes(b'not executed')
     (root / 'nanobot/workgroups').mkdir(parents=True)
-    shutil.copy2(Path(__file__).resolve().parents[2] / 'nanobot/workgroups/icon.ico', root / 'nanobot/workgroups/icon.ico')
+    shutil.copy2(Path(__file__).resolve().parents[2] / 'nanobot/workgroups/icon-transparent.ico', root / 'nanobot/workgroups/icon-transparent.ico')
     desktop = tmp_path / 'desktop'
     installer = root / 'scripts/install_desktop.ps1'
     shutil.copy2(Path(__file__).resolve().parents[2] / 'scripts/install_desktop.ps1', installer)
@@ -149,4 +149,4 @@ def test_windows_shortcut_points_to_hidden_launcher_in_installation_with_spaces(
     assert Path(values['target']) == root / '.venv/Scripts/pythonw.exe'
     assert values['arguments'] == '"' + str(root / 'scripts/desktop_launcher.py') + '"'
     assert Path(values['directory']) == root
-    assert Path(values['icon']) == root / 'nanobot/workgroups/icon.ico'
+    assert Path(values['icon']) == root / 'nanobot/workgroups/icon-transparent.ico'

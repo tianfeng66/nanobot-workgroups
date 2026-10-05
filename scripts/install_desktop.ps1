@@ -10,7 +10,7 @@ if (-not ('NanobotDesktop.Shortcut' -as [type])) {
     Add-Type -Path (Join-Path $PSScriptRoot 'desktop_shortcut.cs')
 }
 [NanobotDesktop.Shortcut]::Save((Join-Path $DesktopDirectory 'nanobot 个人工作台.lnk'), $desktopPython,
-    ('"' + $desktopLauncher + '"'), $desktopInstallRoot, (Join-Path $desktopInstallRoot 'nanobot\workgroups\icon.ico'))
+    ('"' + $desktopLauncher + '"'), $desktopInstallRoot, (Join-Path $desktopInstallRoot 'nanobot\workgroups\icon-transparent.ico'))
 if (-not $NoProtocol) {
     $desktopProtocol = 'HKCU:\Software\Classes\nanobot-workgroups'
     New-Item -Path ($desktopProtocol + '\shell\open\command') -Force | Out-Null

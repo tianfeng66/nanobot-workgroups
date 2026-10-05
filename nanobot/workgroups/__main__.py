@@ -135,7 +135,7 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
             url = urlparse(self.path)
             query = parse_qs(url.query)
             if url.path in ('/favicon.ico', '/app-icon.png'):
-                filename, content_type = ('icon.ico', 'image/x-icon') if url.path == '/favicon.ico' else ('icon.png', 'image/png')
+                filename, content_type = ('icon-transparent.ico', 'image/x-icon') if url.path == '/favicon.ico' else ('icon.png', 'image/png')
                 data = Path(__file__).with_name(filename).read_bytes()
                 self.send_response(200)
                 self.send_header('Content-Type', content_type)
