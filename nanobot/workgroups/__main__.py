@@ -48,6 +48,11 @@ class CancelInput(Input):
     task_id: str
 
 
+class LoginInput(Input):
+    token: str = Field(min_length=1, max_length=200)
+    next: str = '/assistant'
+
+
 class UploadInput(Input):
     filename: str = Field(min_length=1, max_length=200)
     content: str
@@ -109,6 +114,20 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
                 return False
             return "workgroups" in cookie and hmac.compare_digest(cookie["workgroups"].value, token)
 
+        def send_page(self, page: str) -> None:
+            data = Path(__file__).with_name(page).read_bytes()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Referrer-Policy', 'no-referrer')
+            self.end_headers()
+            self.wfile.write(data)
+
+        def login_cookie(self) -> str:
+            return f'workgroups={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000'
+
         def do_GET(self) -> None:
             if self.headers.get("Host") != host:
                 self.send_json({"error": "Invalid host"}, 403)
@@ -117,24 +136,22 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
             query = parse_qs(url.query)
             if url.path == "/" and hmac.compare_digest(query.get("token", [""])[0], token):
                 self.send_response(303)
-                self.send_header("Location", "/")
-                self.send_header("Set-Cookie", f"workgroups={token}; HttpOnly; SameSite=Strict; Path=/")
+                destination = query.get('next', ['/'])[0]
+                self.send_header("Location", destination if destination in ('/', '/assistant') else '/')
+                self.send_header("Set-Cookie", self.login_cookie())
                 self.send_header("Cache-Control", "no-store")
+                self.send_header('Referrer-Policy', 'no-referrer')
                 self.end_headers()
                 return
+            if url.path == '/login' or (url.path in ('/', '/assistant', '/task') and not self.authorized()):
+                self.send_page('login.html')
+                return
             if not self.authorized():
-                self.send_json({"error": "请从启动脚本输出的登录链接打开工作群组"}, 401)
+                self.send_json({"error": "请登录个人工作台", "login_url": "/login"}, 401)
                 return
             if url.path in ("/", "/assistant", '/task'):
                 page = {'/': 'dashboard.html', '/assistant': 'assistant.html', '/task': 'task.html'}[url.path]
-                data = Path(__file__).with_name(page).read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(data)))
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("X-Content-Type-Options", "nosniff")
-                self.end_headers()
-                self.wfile.write(data)
+                self.send_page(page)
             elif url.path == "/api/state":
                 selected = query.get("group", [""])[0]
                 try:
@@ -183,7 +200,8 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
                 self.send_json({"error": "Not found"}, 404)
 
         def do_POST(self) -> None:
-            if self.headers.get("Host") != host or not self.authorized():
+            route = urlparse(self.path).path
+            if self.headers.get("Host") != host or (route != '/auth/login' and not self.authorized()):
                 self.send_json({"error": "Unauthorized"}, 403)
                 return
             origin = self.headers.get("Origin")
@@ -195,14 +213,29 @@ def create_server(service: WorkgroupService, config_path: Path, port: int) -> Th
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                route = urlparse(self.path).path
                 limit = 12 * 1024 * 1024 if route == '/api/assistant/upload' else 300000
+                if route == '/auth/login':
+                    limit = 2048
                 if not 0 < length <= limit:
                     raise ValueError("Invalid request size")
                 data = json.loads(self.rfile.read(length))
                 if not isinstance(data, dict):
                     raise ValueError("Expected an object")
-                if route == "/api/groups":
+                if route == '/auth/login':
+                    request = LoginInput.model_validate(data)
+                    if not hmac.compare_digest(request.token.strip(), token):
+                        self.send_json({'error': '访问码不正确，请使用桌面入口或核对本机访问码。'}, 401)
+                        return
+                    payload = json.dumps({'next': request.next if request.next in ('/', '/assistant') else '/assistant'}).encode()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(payload)))
+                    self.send_header('Cache-Control', 'no-store')
+                    self.send_header('Set-Cookie', self.login_cookie())
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
+                elif route == "/api/groups":
                     request = CreateInput.model_validate(data)
                     result = service.create(request.name, request.workspace, request.members)
                 elif route == "/api/tasks":

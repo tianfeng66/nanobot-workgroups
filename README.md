@@ -9,7 +9,7 @@
 1. 从 [Releases](https://github.com/tianfeng66/nanobot-workgroups/releases) 下载源码安装包，或使用 **Code → Download ZIP**，解压到固定目录，例如 `D:\Apps\nanobot-workgroups`。不要在压缩包内运行。
 2. 双击 **`install.cmd`**。自动下载 Python 3.12、Codex CLI、OpenCode 和 Python 依赖，无需预装 Python、Node.js 或 Codex 桌面应用。
 3. 双击 **`login-codex.cmd`** 或 **`login-opencode.cmd`**，通过官方流程登录自己的模型账号。用哪个成员，就连接哪个。
-4. 双击 **`start.cmd`**。浏览器自动打开工作群组；保持服务终端运行。
+4. 双击桌面的 **“nanobot 个人工作台”**，或者安装目录里的 **`打开工作台.vbs`**。自动后台启动并登录，以独立应用窗口打开；不需要打开终端。没有 Edge / Chrome 时使用默认浏览器。
 5. 创建群组，在任务开头写 `@codex` 或 `@opencode` 并提交。
 
 **下载应用不包含模型额度。** 订阅登录消耗账号额度，API Key 登录按厂商规则计费。账号、密钥和群组数据留在使用者自己的电脑，仓库不含作者的登录与资料。
@@ -24,6 +24,7 @@ OpenCode 登录后在 `personal-data/workgroups/runtime/xdg-config/opencode/open
 
 ## 功能
 
+- 桌面应用入口：自动启动、自动本机登录、复用已有服务；关闭应用窗口后，后台任务继续执行。
 - 独立项目群、成员、共享记忆、任务记录。
 - 真实 CLI 执行，显示排队、运行、完成、失败与取消，保存结果和日志。
 - 前序任务依赖：Codex 实现后由 OpenCode 检查，前序成功才继续。
@@ -46,7 +47,9 @@ OpenCode 登录后在 `personal-data/workgroups/runtime/xdg-config/opencode/open
 
 ## 个人资料与项目工作台
 
-启动后点击页面顶部的 **个人资料与项目工作台**，或在已登录浏览器中打开 `http://127.0.0.1:8877/assistant`。
+桌面入口直接打开个人工作台。也可在浏览器中打开 `http://127.0.0.1:8877/assistant`；未登录时显示登录页，点击“打开桌面应用”即可通过已安装的桌面入口进入。
+
+需要在其他浏览器登录时，展开“在当前浏览器登录”，输入本机 `personal-data/workgroups/dashboard.token` 文件中的访问码。访问码请自行保管。本机登录有效期为 30 天，桌面入口可随时重新登录；模型账号仍只需按官方流程连接。网页服务未运行时，先双击桌面入口。
 
 ### 资料收件箱
 
@@ -105,4 +108,4 @@ OpenCode 登录后在 `personal-data/workgroups/runtime/xdg-config/opencode/open
 
 A Windows local workgroup dashboard based on nanobot, delegating project tasks to Codex CLI and OpenCode with persistent queues, shared group memory and task dependencies.
 
-Extract the source ZIP, run `install.cmd`, authenticate your own account via `login-codex.cmd` or `login-opencode.cmd`, then run `start.cmd`. Model calls consume your own quota or API balance. The installer keeps runtimes and application data in the installation directory and verifies pinned official CLI downloads. Windows x64 only for the one-click installer.
+Extract the source ZIP, run `install.cmd`, authenticate your own account via `login-codex.cmd` or `login-opencode.cmd`, then open the installed desktop shortcut or `打开工作台.vbs`. It starts the server in the background and signs into the local workspace automatically. Model calls consume your own quota or API balance. The installer keeps runtimes and application data in the installation directory and verifies pinned official CLI downloads. Windows x64 only for the one-click installer.

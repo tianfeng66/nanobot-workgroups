@@ -72,4 +72,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed.' }
 $env:NANOBOT_HOME = Join-Path $installRoot 'personal-data'
 & $installPython (Join-Path $installRoot 'scripts\setup_personal.py')
 if ($LASTEXITCODE -ne 0) { throw 'Configuration setup failed.' }
-Write-Host 'Installed. Run login-codex.cmd or login-opencode.cmd, then start.cmd.'
+& (Join-Path $installRoot 'scripts\install_desktop.ps1')
+Write-Host 'Installed. Connect your model account once, then open the nanobot desktop entry.'

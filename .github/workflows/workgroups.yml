@@ -6,6 +6,9 @@ on:
       - 'nanobot/config/**'
       - 'nanobot/agent/tools/workgroups.py'
       - 'scripts/setup_personal.py'
+      - 'scripts/desktop_launcher.py'
+      - 'scripts/install_desktop.ps1'
+      - '打开工作台.vbs'
       - 'install.ps1'
       - 'scripts/windows-tools.json'
       - 'requirements-windows.txt'
@@ -29,7 +32,7 @@ jobs:
         run: |
           .\.venv\Scripts\python.exe -m pytest tests/workgroups tests/config/test_config_paths.py tests/tools/test_tool_loader.py -q
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .\.venv\Scripts\python.exe -m ruff check nanobot/workgroups nanobot/agent/tools/workgroups.py scripts/setup_personal.py tests/workgroups
+          .\.venv\Scripts\python.exe -m ruff check nanobot/workgroups nanobot/agent/tools/workgroups.py scripts/setup_personal.py scripts/desktop_launcher.py tests/workgroups
       - name: Check native CLIs
         shell: powershell
         run: |
